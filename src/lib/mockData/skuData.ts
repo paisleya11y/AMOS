@@ -6,7 +6,7 @@ import { SkuData } from '@/types'
 export const insta365Skus: SkuData[] = [
   {
     id: 'insta_001',
-    name: 'Insta360 X5 运动相机',
+    name: 'Insta365 X5 运动相机',
     price: 499,
     cost: 275,
     weeklySales: 48,

@@ -7,6 +7,7 @@ import { buildAssortmentPrompt } from '@/lib/prompts/assortment'
 import { SYSTEM_PROMPT } from '@/lib/prompts/system'
 import { analyzeInventory, getTrendOpportunities } from '@/lib/tools/inventoryAnalyzer'
 import { AssortmentResult, AssortmentLLMOutput } from '@/types'
+import { DateRange } from '@/lib/dateRange'
 
 const assortmentSkill = fs.readFileSync(
   path.join(process.cwd(), 'skills/skill-assortment-expert.md'),
@@ -45,6 +46,7 @@ function mergeAssortmentResult(
     recommendedProducts: llm.recommendedProducts || [],
     inventoryWarnings: llm.inventoryWarnings || [],
     upcomingOpportunities: llm.upcomingOpportunities || [],
+    evidence: llm.evidence || [],
   }
 }
 
@@ -117,7 +119,16 @@ function generateFallbackWarnings(inventory: ReturnType<typeof analyzeInventory>
 
 export async function POST(req: NextRequest) {
   try {
-    const { merchantId } = await req.json()
+    const body = await req.json()
+    const merchantId = body.merchantId
+    const focusNote: string | undefined =
+      typeof body.focusNote === 'string' && body.focusNote.trim()
+        ? body.focusNote.trim().slice(0, 500)
+        : undefined
+    const dateRange: DateRange | undefined =
+      body.dateRange && typeof body.dateRange.start === 'string' && typeof body.dateRange.end === 'string'
+        ? { start: body.dateRange.start, end: body.dateRange.end }
+        : undefined
     const merchant = getMerchantById(merchantId)
     if (!merchant) {
       return NextResponse.json({ error: 'Merchant not found' }, { status: 404 })
@@ -128,7 +139,7 @@ export async function POST(req: NextRequest) {
     const trends = getTrendOpportunities(merchant.subCategoryTags)
 
     // 2. 构建 LLM 提示词
-    const prompt = await buildAssortmentPrompt(merchant, inventory, trends)
+    const prompt = await buildAssortmentPrompt(merchant, inventory, trends, focusNote, dateRange)
 
     // 3. 调用 LLM 获取增强诊断文本
     let result: AssortmentResult

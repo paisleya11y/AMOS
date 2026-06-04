@@ -2,11 +2,14 @@ import { MerchantData } from '@/types'
 import { BenchmarkCaseExtended } from '@/lib/mockData/benchmarkCases'
 import { GapAnalysis } from '@/lib/tools/benchmarkMatcher'
 import { retrieveRelevantKnowledge, formatKnowledgeContext } from '@/lib/rag/retriever'
+import { DateRange, rangePromptLine } from '@/lib/dateRange'
 
 export async function buildBenchmarkPrompt(
   merchant: MerchantData,
   matchedCase: BenchmarkCaseExtended,
-  gap: GapAnalysis
+  gap: GapAnalysis,
+  focusNote?: string,
+  dateRange?: DateRange
 ): Promise<string> {
   const relevantKnowledge = await retrieveRelevantKnowledge(merchant, 'benchmark', 3)
   const knowledgeCtx = formatKnowledgeContext(relevantKnowledge)
@@ -23,9 +26,12 @@ export async function buildBenchmarkPrompt(
     ? gap.adaptationNotes.map((a) => `- ${a}`).join('\n')
     : '无需特殊适配'
 
-  return `请基于标杆案例为以下商家生成学习建议，输出 JSON。
+  const rangeLine = rangePromptLine(dateRange)
 
-【检索到的相关知识（必须基于此生成建议，并在建议中标注来源）】
+  return `请基于标杆案例为以下商家生成学习建议，输出 JSON。
+${rangeLine ? rangeLine + '\n（所有"本周/近期"诊断都基于此周期，避免出现与该周期不一致的时间词。）\n' : ''}
+${focusNote ? `【AM 本次重点关注（必须在 similarityReason / actionableSteps 中体现）】\n${focusNote}\n` : ''}
+【检索到的相关知识（建议必须基于此生成）】
 ${knowledgeCtx}
 
 ${selfMatchWarning}【当前商家】
@@ -67,7 +73,7 @@ ${adaptationSection}
 4. 如果商家自身就是标杆案例（isSelfMatch），不要建议"向自己学习"，而是给出下一阶段突破方向或跨品类启发
 5. expectedOutcome 必须基于差距分析调整预期——差距越大，预期越保守
 
-重要：每条建议必须标注知识来源，格式为「建议内容（来源：XXX）」
+重要：所有正文文本中**严禁**出现"（来源：…）"、"（依据：…）"、"根据 XXX："等显式归因短语；归因将通过结构化字段在前端以 hover 形式呈现。
 
 输出以下 JSON（不要有任何其他文字）：
 {
@@ -86,6 +92,14 @@ ${adaptationSection}
     "步骤3",
     "步骤4"
   ],
-  "expectedOutcome": "基于差距分析调整后的量化预期（差距越大预期越保守，标注置信度）"
-}`
+  "expectedOutcome": "基于差距分析调整后的量化预期（差距越大预期越保守，标注置信度）",
+  "evidence": [
+    { "type": "benchmark", "label": "≤10字短标签", "detail": "≤40字真实数据/出处" }
+  ]
+}
+
+【evidence 字段（必填，3-5 条）】
+- 这是整个"标杆学习"板块结论的依据，前端会在板块标题旁渲染统一的"来源"小标签，hover 弹出列表。
+- type 取值：benchmark（标杆案例）/ metric（商家与标杆的对比数据）/ knowledge（方法论）/ trend（品类趋势）。
+- label ≤10 字，detail ≤40 字，必须引用真实标杆名/匹配维度/数据。严禁编造。`
 }

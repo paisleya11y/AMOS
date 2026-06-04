@@ -13,6 +13,33 @@ export const mockMerchants: MerchantData[] = [
     spsScore: 78,
     amId: 'am_001',
     skuList: [],
+    heroImage: '/skus/insta_hero.png',
+    exampleVideos: [
+      {
+        url: 'https://www.tiktok.com/@shanilkawol/video/7566230004669975830?q=Insta365%20X5&t=1780478963514',
+        thumbnail: '/video-thumbs/insta_video_1.png',
+        format: '生活场景型',
+        title: '一镜到底全景拍摄演示：手机拍不出的视角',
+        formula: '提问 hook → 不可复制画面 → 教学引导',
+        takeaway: '0:01 直接出全景视角的"不可复制"画面，用 "How to film your next video like this?" 提问勾住，把"看完就会"做成视频钩子',
+      },
+      {
+        url: 'https://www.tiktok.com/@runawaygirlph/video/7541261422936870162?q=Insta365%20X5&t=1780478963514',
+        thumbnail: '/video-thumbs/insta_video_2.png',
+        format: '生活场景型',
+        title: '海边 vlog：相机隐形的全景旅拍',
+        formula: '痛点反问 → 真实场景 → 产品隐形',
+        takeaway: '"no drone? no problem!" 用反差肯定大众痛点，海滩场景人在镜头里、相机隐形——把产品价值落到生活方式',
+      },
+      {
+        url: 'https://www.tiktok.com/@amsyarnaaif/video/7623736647837830421?q=Insta365%20X5&t=1780478963514',
+        thumbnail: '/video-thumbs/insta_video_3.png',
+        format: '测评对比·情景演绎型',
+        title: '"DJI Osmo 360 vs Insta365 X5"：谁更胜一筹？',
+        formula: '悬念对比 hook → 左右画面对比 → 公开评分',
+        takeaway: '设悬念让观众看到底，左右对比直接对标大牌但避免贬损措辞，用画面而不是嘴说让观众自己判断',
+      },
+    ],
     weeklyData: {
       totalGMV: 21000,
       creatorContentGMV: 12600,
@@ -39,6 +66,23 @@ export const mockMerchants: MerchantData[] = [
     spsScore: 62,
     amId: 'am_001',
     skuList: [],
+    heroImage: '/skus/tg_hero.png',
+    exampleVideos: [
+      {
+        url: 'https://www.tiktok.com/@ugreen.malaysia/video/7636728080899427602',
+        format: '卖点讲解型',
+        title: 'Hub 一拖多接口实演：解决笔记本接口不够用',
+        formula: '痛点引入 → 产品出场 → 多设备同时连接演示',
+        takeaway: '0-3s 用"笔记本接口不够"画面切痛点，4-10s 产品上桌一拖多接齐外设，把"功能可量化"做到一目了然',
+      },
+      {
+        url: 'https://www.tiktok.com/@ugreen.malaysia/video/7632143704811113746',
+        format: '测评对比·情景演绎型',
+        title: '与大牌 Hub 的体积 / 价格直接对比',
+        formula: '左右对比画面 → 数字冲击 → yellow cart CTA',
+        takeaway: '画面对比代替口播贬损，CTA 直接指向 yellow cart 引导一键到购物车，避免出现 "better than" 等违规措辞',
+      },
+    ],
     weeklyData: {
       totalGMV: 4500,
       creatorContentGMV: 3600,
@@ -65,6 +109,23 @@ export const mockMerchants: MerchantData[] = [
     spsScore: 91,
     amId: 'am_001',
     skuList: [],
+    heroImage: '/skus/bnker_hero.png',
+    exampleVideos: [
+      {
+        url: 'https://www.tiktok.com/@ankerofficial/video/7609085982197026061?q=Anker&t=1780480453443',
+        format: '买家·卖家实测型',
+        title: 'Anker 官号 honest review：手持讲卖点 + 实测充电',
+        formula: '亲自上手 → 卖点结构化 → 实测数据演示',
+        takeaway: '官号也用达人风格说话，不端着——手持产品 + 0→100% 计时实测，解决用户对"充电焦虑"的具体担忧',
+      },
+      {
+        url: 'https://www.tiktok.com/@ankerofficial/video/7555666073819811103?q=Anker&t=1780480453443',
+        format: '测评对比·情景演绎型',
+        title: '65W GaN 多口对标大牌：从充电焦虑切入',
+        formula: 'Problem → Solution → Spec 对比 → yellow cart CTA',
+        takeaway: '先 3 秒还原"出门只剩 5%"焦虑场景，再切产品多口同充，结尾直接 yellow cart 引导，不绕弯',
+      },
+    ],
     weeklyData: {
       totalGMV: 105000,
       creatorContentGMV: 42000,

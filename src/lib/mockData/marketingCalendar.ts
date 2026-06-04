@@ -11,7 +11,7 @@ export function getUpcomingCampaigns(today: Date): MarketingNode[] {
   const nodes: Omit<MarketingNode, 'daysUntil'>[] = [
     {
       name: '年中大促',
-      date: '2025-06-15',
+      date: '2026-06-15',
       type: 'major',
       prepWeeks: 6,
       actions: [
@@ -23,7 +23,7 @@ export function getUpcomingCampaigns(today: Date): MarketingNode[] {
     },
     {
       name: '夏促',
-      date: '2025-06-28',
+      date: '2026-06-28',
       type: 'major',
       prepWeeks: 4,
       actions: [
@@ -35,7 +35,7 @@ export function getUpcomingCampaigns(today: Date): MarketingNode[] {
     },
     {
       name: '返校季',
-      date: '2025-08-15',
+      date: '2026-08-15',
       type: 'category',
       prepWeeks: 4,
       actions: [
@@ -46,7 +46,7 @@ export function getUpcomingCampaigns(today: Date): MarketingNode[] {
     },
     {
       name: '黑五',
-      date: '2025-11-28',
+      date: '2026-11-27',
       type: 'major',
       prepWeeks: 12,
       actions: [
@@ -60,7 +60,7 @@ export function getUpcomingCampaigns(today: Date): MarketingNode[] {
     },
     {
       name: '网一',
-      date: '2025-12-01',
+      date: '2026-11-30',
       type: 'major',
       prepWeeks: 12,
       actions: [
@@ -71,7 +71,7 @@ export function getUpcomingCampaigns(today: Date): MarketingNode[] {
     },
     {
       name: '假日节',
-      date: '2025-12-20',
+      date: '2026-12-20',
       type: 'major',
       prepWeeks: 8,
       actions: [

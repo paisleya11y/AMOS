@@ -28,10 +28,10 @@ export async function callDeepSeek(
       const response = await axios.post(
         DEEPSEEK_API_URL,
         {
-          model: 'deepseek-v4-flash',
+          model: 'deepseek-chat',
           messages,
           temperature: options?.temperature ?? 0.3,
-          max_tokens: options?.maxTokens ?? 2000,
+          max_tokens: options?.maxTokens ?? 8000,
           response_format: options?.jsonMode ? { type: 'json_object' } : undefined,
         },
         {

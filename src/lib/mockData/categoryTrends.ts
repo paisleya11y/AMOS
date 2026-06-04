@@ -68,7 +68,7 @@ export const allTrends: CategoryTrend[] = [
     videoGrowth: 180,
     competitionLevel: 'low',
     merchantRelevance: 'high',
-    recommendedAction: '强化Insta360 X5在TikTok的"全景创意拍摄"内容，开箱直拍型+生活场景型组合',
+    recommendedAction: '强化Insta365 X5在TikTok的"全景创意拍摄"内容，开箱直拍型+生活场景型组合',
     peakSeason: 'Q2出行季+Q4滑雪季',
   },
   {
