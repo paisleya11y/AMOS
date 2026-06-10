@@ -2,6 +2,7 @@ import { MerchantData, Alert } from '@/types'
 import { getCampaignsWithinWeeks } from '@/lib/tools/calendarTool'
 import { retrieveRelevantKnowledge, formatKnowledgeContext } from '@/lib/rag/retriever'
 import { DateRange, rangePromptLine } from '@/lib/dateRange'
+import { formatMerchantFacts } from '@/lib/merchantFacts'
 
 export async function buildEmpowermentPrompt(
   merchant: MerchantData,
@@ -22,6 +23,8 @@ export async function buildEmpowermentPrompt(
   return `请为以下商家生成投流与营销策略建议，输出 JSON。
 ${rangeLine ? rangeLine + '\n（所有"本周/近期"诊断都基于此周期，避免出现与该周期不一致的时间词。）\n' : ''}
 ${focusNote ? `【AM 本次重点关注（必须在 adStrategy / weeklyBudgetSuggestion 中体现）】\n${focusNote}\n` : ''}
+${formatMerchantFacts(merchant)}
+
 【检索到的相关知识（建议必须基于此生成）】
 ${knowledgeCtx}
 

@@ -1,6 +1,7 @@
 import { MerchantData, MerchantProfile } from '@/types'
 import { formatCampaignContext } from '@/lib/tools/calendarTool'
 import { retrieveRelevantKnowledge, formatKnowledgeContext } from '@/lib/rag/retriever'
+import { formatMerchantFacts } from '@/lib/merchantFacts'
 
 export async function buildDiagnosePrompt(
   merchant: MerchantData,
@@ -14,6 +15,8 @@ export async function buildDiagnosePrompt(
     : ''
 
   return `请对以下商家进行 ACE 经营诊断，输出 JSON。
+
+${formatMerchantFacts(merchant)}
 
 【检索到的相关知识（建议必须基于此生成）】
 ${knowledgeCtx}

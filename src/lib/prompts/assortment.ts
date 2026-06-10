@@ -3,6 +3,7 @@ import { formatCampaignContext } from '@/lib/tools/calendarTool'
 import { retrieveRelevantKnowledge, formatKnowledgeContext } from '@/lib/rag/retriever'
 import { formatInventoryForPrompt, formatTrendsForPrompt } from '@/lib/tools/inventoryAnalyzer'
 import { DateRange, rangePromptLine } from '@/lib/dateRange'
+import { formatMerchantFacts } from '@/lib/merchantFacts'
 
 export async function buildAssortmentPrompt(
   merchant: MerchantData,
@@ -23,6 +24,8 @@ export async function buildAssortmentPrompt(
   return `你是 TikTok Shop 选品货盘专家。请基于以下数据，为商家「${merchant.name}」生成诊断文本和建议。
 ${rangeLine ? rangeLine + '\n（所有"本周/近期"诊断都基于此周期，避免出现与该周期不一致的时间词。）\n' : ''}
 ${focusNote ? `【AM 本次重点关注（必须在 structureDiagnosis / recommendedProducts / inventoryWarnings 中体现）】\n${focusNote}\n` : ''}
+${formatMerchantFacts(merchant)}
+
 【相关知识】
 ${knowledgeCtx}
 

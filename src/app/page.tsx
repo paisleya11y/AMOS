@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { mockMerchants } from '@/lib/mockData/merchants'
 import MerchantSelector from '@/components/agent/MerchantSelector'
 import AgentTrace from '@/components/agent/AgentTrace'
@@ -13,7 +13,10 @@ import HealthScoreTrend from '@/components/agent/HealthScoreTrend'
 import ReviseRequest, { type ReviseModule } from '@/components/agent/ReviseRequest'
 import DateRangePicker from '@/components/agent/DateRangePicker'
 import FocusBuilder from '@/components/agent/FocusBuilder'
+import TriageBoard from '@/components/agent/TriageBoard'
 import { saveReport, loadReport } from '@/lib/reportHistory'
+import { ensureDemoSeed } from '@/lib/demoSeed'
+import { deriveAmTone } from '@/lib/feedbackStore'
 import { defaultDateRange, rangeWeekLabel, type DateRange } from '@/lib/dateRange'
 import { sanitizeDeep } from '@/lib/textSanitize'
 import type {
@@ -105,7 +108,23 @@ function initSteps(modules: AgentTraceStep['module'][]): AgentTraceStep[] {
   }))
 }
 
+/**
+ * 把 AM 个性化语气（由历史反馈推断）并入本次 focusNote，注入各 agent prompt。
+ * 复用既有 focusNote 通道，不改 API 路由签名。样本不足时 promptHint=null，不注入。
+ */
+function composeNote(focusNote: string, merchantId: string): string | undefined {
+  const base = focusNote?.trim() || ''
+  const insight = deriveAmTone(merchantId)
+  const tone = insight.promptHint
+    ? `【AM 风格自适应（据历史反馈：${insight.basis}）】${insight.promptHint}`
+    : ''
+  const merged = [base, tone].filter(Boolean).join('\n')
+  return merged || undefined
+}
+
 export default function Home() {
+  // 视图：默认进分诊台（先看全 portfolio 该救谁），点某家才进单商家报告
+  const [view, setView] = useState<'triage' | 'detail'>('triage')
   const [selectedId, setSelectedId] = useState('merchant_001')
   // 内容目标固定为转化（默认值），未来可由「引导诊断」路径自动推断
   const contentGoal: ContentGoal = 'conversion'
@@ -130,6 +149,12 @@ export default function Home() {
   // activeKey === string 表示在回看某份归档报告（只读）
   const [activeKey, setActiveKey] = useState<string | 'live' | null>(null)
   const [historyTick, setHistoryTick] = useState(0)
+
+  // Demo 种子：首次加载若 Insta 365 无历史归档，自动注入"上周"数据，让回顾卡即开即演
+  useEffect(() => {
+    ensureDemoSeed()
+    setHistoryTick((t) => t + 1)
+  }, [])
 
   function updateStep(module: string, patch: Partial<AgentTraceStep>) {
     setSteps((prev) =>
@@ -162,7 +187,7 @@ export default function Home() {
         const res = await fetch('/api/assortment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ merchantId, focusNote, dateRange }),
+          body: JSON.stringify({ merchantId, focusNote: composeNote(focusNote, merchantId), dateRange }),
         })
         if (!res.ok) throw new Error(`API ${res.status}`)
         const data = await res.json()
@@ -198,7 +223,7 @@ export default function Home() {
         const res = await fetch('/api/content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ merchantId, goal: contentGoal, focusNote, dateRange }),
+          body: JSON.stringify({ merchantId, goal: contentGoal, focusNote: composeNote(focusNote, merchantId), dateRange }),
         })
         if (!res.ok) throw new Error(`API ${res.status}`)
         const data = await res.json()
@@ -258,7 +283,7 @@ export default function Home() {
       const res = await fetch('/api/empowerment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchantId, focusNote, dateRange }),
+        body: JSON.stringify({ merchantId, focusNote: composeNote(focusNote, merchantId), dateRange }),
       })
       const data = await res.json()
       if (!data.error) empowerment = data
@@ -282,7 +307,7 @@ export default function Home() {
       const res = await fetch('/api/benchmark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchantId, focusNote, dateRange }),
+        body: JSON.stringify({ merchantId, focusNote: composeNote(focusNote, merchantId), dateRange }),
       })
       const data = await res.json()
       if (!data.error) benchmark = data
@@ -319,29 +344,44 @@ export default function Home() {
     return diagnose
   }, [])
 
-  const runValidate = useCallback(async (merchantId: string): Promise<ValidationResult> => {
-    updateStep('validate', { status: 'running', startTime: Date.now() })
-    let validation: ValidationResult = {
-      overallConfidence: 0, issues: [], suggestionScores: [], revisedSuggestions: [],
-    }
-    try {
-      const res = await fetch('/api/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchantId }),
+  const runValidate = useCallback(
+    async (
+      merchantId: string,
+      generatedReport: {
+        assortment: AssortmentResult
+        content: ContentResult
+        empowerment: EmpowermentResult
+        benchmark: BenchmarkResult
+      },
+      healthScore: number,
+    ): Promise<ValidationResult> => {
+      updateStep('validate', { status: 'running', startTime: Date.now() })
+      let validation: ValidationResult = {
+        overallConfidence: 0, issues: [], suggestionScores: [], revisedSuggestions: [],
+      }
+      try {
+        // 注意：validate 路由需要 merchantData / generatedReport / healthScore，
+        // 之前只发了 merchantId 导致一直走 catch（confidence 恒为 0）。
+        const merchantData = mockMerchants.find((m) => m.id === merchantId)
+        const res = await fetch('/api/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ merchantData, generatedReport, healthScore }),
+        })
+        const data = await res.json()
+        if (!data.error) validation = data
+      } catch (err) {
+        console.error('[validate]', err)
+      }
+      updateStep('validate', {
+        status: 'done',
+        endTime: Date.now(),
+        output: `置信度：${validation.overallConfidence}分，${validation.issues?.length ?? 0}个问题`,
       })
-      const data = await res.json()
-      if (!data.error) validation = data
-    } catch (err) {
-      console.error('[validate]', err)
-    }
-    updateStep('validate', {
-      status: 'done',
-      endTime: Date.now(),
-      output: `置信度：${validation.overallConfidence}分，${validation.issues?.length ?? 0}个问题`,
-    })
-    return validation
-  }, [])
+      return validation
+    },
+    [],
+  )
 
   // ---- 编排：跑选中的模块（可单 module，可多 module）----
 
@@ -394,12 +434,21 @@ export default function Home() {
         if (m === 'benchmark') results.benchmark = await runBenchmark(merchantId)
       }
 
-      // diagnose + validate 总是跑（健康分跟整体相关）
+      // diagnose 总是跑（健康分跟整体相关）
       const diagnose = await runDiagnose(merchantId)
-      const validation = await runValidate(merchantId)
-      void validation
 
       setHealthScores((prev) => ({ ...prev, [merchantId]: diagnose.healthScore }))
+
+      // 先把四块切片合并好（单 module 重跑时复用旧切片），validate 要拿完整报告做审核
+      const mergedSlices = {
+        assortment: results.assortment ?? baseReport.assortment ?? EMPTY_ASSORTMENT,
+        content: results.content ?? baseReport.content ?? EMPTY_CONTENT,
+        empowerment: results.empowerment ?? baseReport.empowerment ?? EMPTY_EMPOWERMENT,
+        benchmark: results.benchmark ?? baseReport.benchmark ?? EMPTY_BENCHMARK,
+      }
+
+      // 自我校验：把整份建议交给 validate agent 打置信度 + 挑问题（结果接回报告，不再丢弃）
+      const validation = await runValidate(merchantId, mergedSlices, diagnose.healthScore)
 
       const now = new Date()
       // 报告 week label：基于当前所选分析周期，渲染成「YYYY 年 M 月第 N 周」
@@ -412,12 +461,10 @@ export default function Home() {
         week,
         traceSteps: steps,
         diagnose,
-        assortment: results.assortment ?? baseReport.assortment ?? EMPTY_ASSORTMENT,
-        content: results.content ?? baseReport.content ?? EMPTY_CONTENT,
-        empowerment: results.empowerment ?? baseReport.empowerment ?? EMPTY_EMPOWERMENT,
-        benchmark: results.benchmark ?? baseReport.benchmark ?? EMPTY_BENCHMARK,
+        ...mergedSlices,
         larkMessage: `${merchant.name} 本周健康评分 ${diagnose.healthScore}`,
         popupAlerts: diagnose.alerts ?? [],
+        validation,
       }
 
       // 在写入前剥掉 LLM 偶尔会带的"（来源：…）"等显式归因，归因走结构化 evidence 字段 + hover
@@ -496,6 +543,29 @@ export default function Home() {
     }
   }
 
+  /** 从分诊台进入某商家：选中 + 切到 detail 视图 + 清掉上一家的状态 */
+  function enterMerchant(id: string) {
+    setSelectedId(id)
+    setReport(null)
+    setActiveKey(null)
+    setSteps([])
+    setSent(false)
+    setView('detail')
+  }
+
+  // 分诊台视图：全屏展示全商家 portfolio
+  if (view === 'triage') {
+    return (
+      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-6">
+        <TriageBoard
+          merchants={mockMerchants}
+          amName="am_001"
+          onPick={enterMerchant}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 min-h-0">
       {/* 左侧栏：商家列表 + 前置追问 + 模块勾选 + 启动 */}
@@ -534,6 +604,32 @@ export default function Home() {
             onChange={setFocusNote}
             disabled={running}
           />
+          {/* AM 风格自适应：据历史反馈推断，注入下次生成 */}
+          {(() => {
+            const insight = deriveAmTone(selectedId)
+            if (!insight.promptHint) return null
+            const toneCn =
+              insight.tone === 'aggressive' ? '偏进取' : insight.tone === 'conservative' ? '偏稳健' : '均衡'
+            const toneStyle =
+              insight.tone === 'aggressive'
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : insight.tone === 'conservative'
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            return (
+              <div className="mt-2 px-2">
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${toneStyle}`}
+                  title={`据历史反馈：${insight.basis}。下次生成会按此风格自适应。`}
+                >
+                  AM 风格：{toneCn}
+                </span>
+                <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
+                  据你的历史反馈（{insight.basis}）自动调整建议口吻
+                </p>
+              </div>
+            )
+          })()}
         </div>
 
         {/* 前置追问 3：想看哪几块 */}
@@ -607,6 +703,14 @@ export default function Home() {
 
       {/* 主区：报告 */}
       <main className="flex-1 overflow-auto bg-gray-50 p-6">
+        {/* 返回分诊台 */}
+        <button
+          onClick={() => setView('triage')}
+          className="mb-4 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors"
+        >
+          ← 返回分诊台
+        </button>
+
         {/* 时间轴：始终展示该商家的归档（即便当前未生成报告） */}
         <ReportTimeline
           merchantId={selectedId}
@@ -693,6 +797,8 @@ export default function Home() {
               alerts={report.popupAlerts}
               onResolve={handleResolveAlert}
               ctaDisabled={running}
+              merchantId={report.merchantId}
+              week={report.week}
             />
             <ReviseRequest onSubmit={handleReviseRequest} disabled={running} />
             <LarkPreview

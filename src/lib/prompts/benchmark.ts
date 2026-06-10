@@ -3,6 +3,7 @@ import { BenchmarkCaseExtended } from '@/lib/mockData/benchmarkCases'
 import { GapAnalysis } from '@/lib/tools/benchmarkMatcher'
 import { retrieveRelevantKnowledge, formatKnowledgeContext } from '@/lib/rag/retriever'
 import { DateRange, rangePromptLine } from '@/lib/dateRange'
+import { formatMerchantFacts } from '@/lib/merchantFacts'
 
 export async function buildBenchmarkPrompt(
   merchant: MerchantData,
@@ -31,6 +32,8 @@ export async function buildBenchmarkPrompt(
   return `请基于标杆案例为以下商家生成学习建议，输出 JSON。
 ${rangeLine ? rangeLine + '\n（所有"本周/近期"诊断都基于此周期，避免出现与该周期不一致的时间词。）\n' : ''}
 ${focusNote ? `【AM 本次重点关注（必须在 similarityReason / actionableSteps 中体现）】\n${focusNote}\n` : ''}
+${formatMerchantFacts(merchant)}
+
 【检索到的相关知识（建议必须基于此生成）】
 ${knowledgeCtx}
 

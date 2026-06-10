@@ -1,6 +1,8 @@
 'use client'
 import { FullReport, MerchantData } from '@/types'
 import { mockMerchants } from '@/lib/mockData/merchants'
+import SuggestionFeedback from './SuggestionFeedback'
+import { computeDimensionScores, weakestDimension } from '@/lib/dimensionScores'
 
 interface Props {
   report: FullReport
@@ -33,29 +35,10 @@ export default function LarkPreview({ report, onSend, sending, sent }: Props) {
   const merchant = mockMerchants.find((m) => m.id === report.merchantId) as
     | MerchantData
     | undefined
-  const wd = merchant?.weeklyData
   const inv = report.assortment?.inventoryAnalysis
 
-  const dims = (() => {
-    if (!wd) return null
-    const totalSku = inv?.totalSkus ?? merchant?.skuList.length ?? 0
-    const starCount = inv?.starSkus.length ?? 0
-    const starRatio = totalSku > 0 ? starCount / totalSku : 0
-    const structureBonus = inv?.structureHealth.isHealthy ? 20 : 0
-    const assortmentScore = Math.round(Math.min(100, 50 + starRatio * 200 + structureBonus))
-    const creatorRatio = wd.totalGMV > 0 ? wd.creatorContentGMV / wd.totalGMV : 0
-    const videoBonus = Math.min(20, (wd.videoCount / 10) * 20)
-    const contentScore = Math.round(Math.min(100, 40 + creatorRatio * 80 + videoBonus))
-    const roiScore = Math.round(Math.min(100, Math.max(0, (wd.adROI / 2.0) * 80 + 10)))
-    const cvrScore = Math.round(Math.min(100, Math.max(0, (wd.conversionRate / 2.0) * 80 + 10)))
-    return [
-      { key: 'assortment', label: '货盘', score: assortmentScore },
-      { key: 'content', label: '内容', score: contentScore },
-      { key: 'empowerment', label: '投流', score: roiScore },
-      { key: 'conversion', label: '转化', score: cvrScore },
-    ]
-  })()
-  const weakest = dims ? dims.reduce((a, b) => (a.score < b.score ? a : b)) : null
+  const dims = merchant ? computeDimensionScores(merchant, inv) : null
+  const weakest = dims ? weakestDimension(dims) : null
 
   // 本周必做 3 件事：从 popupAlerts 取真告警，按 P1>P2>P3 排序
   const PRIORITY_ORDER = { critical: 0, warning: 1, info: 2 } as const
@@ -159,6 +142,12 @@ export default function LarkPreview({ report, onSend, sending, sent }: Props) {
                           {p.title}
                         </p>
                         <p className="text-[11px] text-gray-600 leading-relaxed">{p.body}</p>
+                        <SuggestionFeedback
+                          merchantId={report.merchantId}
+                          week={report.week}
+                          module={p.module}
+                          suggestionText={`预警 · ${p.title}`}
+                        />
                       </div>
                     </div>
                   )

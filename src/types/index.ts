@@ -457,6 +457,8 @@ export interface FullReport {
   benchmark: BenchmarkResult
   larkMessage: string
   popupAlerts: Alert[]
+  /** 自我校验结果：整体置信度 + 问题清单（由 validate agent 产出，可选） */
+  validation?: ValidationResult
 }
 
 export interface ValidationResult {

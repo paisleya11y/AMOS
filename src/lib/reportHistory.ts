@@ -23,6 +23,8 @@ export interface ReportHistoryEntry {
   ts: number
   /** 健康分（用于在时间轴 hover 上展示） */
   healthScore: number
+  /** 报告周期 label（如「2026 年 6 月第 2 周」），用于执行回顾按周对比 */
+  week: string
   /** 用户当时填的本周重点（可选） */
   focusNote?: string
   /** 三档告警条数（用于时间轴对比"上次 vs 本次"） */
@@ -133,6 +135,7 @@ export function listReports(merchantId: string): ReportHistoryEntry[] {
         merchantName: obj.merchantName ?? '',
         ts: obj._ts ?? parsed.ts,
         healthScore: obj.diagnose?.healthScore ?? 0,
+        week: obj.week ?? '',
         focusNote: obj._focusNote,
         alertCounts: {
           critical: alerts.filter((a) => a.level === 'critical').length,

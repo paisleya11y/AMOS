@@ -2,6 +2,7 @@ import { MerchantData, ContentGoal } from '@/types'
 import { retrieveRelevantKnowledge, formatKnowledgeContext } from '@/lib/rag/retriever'
 import { getUpcomingCampaigns } from '@/lib/mockData/marketingCalendar'
 import { DateRange, rangePromptLine } from '@/lib/dateRange'
+import { formatMerchantFacts } from '@/lib/merchantFacts'
 
 const GOAL_LABELS: Record<ContentGoal, string> = {
   awareness: 'A. 让更多人知道（曝光/种草）',
@@ -96,6 +97,8 @@ export async function buildContentPrompt(
 
   return `请为以下美区 TikTok Shop 商家生成内容策略，输出 JSON。
 ${rangeLine ? rangeLine + '\n（所有"本周/近期"诊断都基于此周期，避免出现与该周期不一致的时间词。）\n' : ''}
+${formatMerchantFacts(merchant)}
+
 【语言规则 · 非常重要】
 - 所有「分析、解释、原因、人群画像、卖点、合规说明、达人 brief 中文版、内容形式名解释、选题描述、节奏说明、直播排品、本周计划」全部用**中文**。
 - 仅以下三类字段保留**英文原话**（直接给美区达人/拍摄团队用）：

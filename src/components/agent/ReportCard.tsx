@@ -2,9 +2,14 @@
 import { useState } from 'react'
 import { FullReport, MerchantData } from '@/types'
 import { mockMerchants } from '@/lib/mockData/merchants'
-import EvidenceChips from './EvidenceChips'
+import EvidenceChips, { EvidenceCorpusContext } from './EvidenceChips'
+import { buildFactCorpus } from '@/lib/evidenceCheck'
 import Collapsible from './Collapsible'
 import Tooltip from './Tooltip'
+import SuggestionFeedback from './SuggestionFeedback'
+import WeeklyReviewCard from './WeeklyReviewCard'
+import { computeDimensionScores, weakestDimension } from '@/lib/dimensionScores'
+import { authorityOf, costLabel } from '@/lib/authorityLevel'
 
 interface Props {
   report: FullReport
@@ -131,34 +136,26 @@ function DiagnoseHeader({
   const merchant = mockMerchants.find((m) => m.id === report.merchantId) as
     | MerchantData
     | undefined
-  const wd = merchant?.weeklyData
   const inv = report.assortment?.inventoryAnalysis
 
-  /** 与 LarkPreview 同口径的四维评分，仅用于推算「最弱维度」 */
-  const weakest = (() => {
-    if (!wd) return null
-    const totalSku = inv?.totalSkus ?? merchant?.skuList.length ?? 0
-    const starCount = inv?.starSkus.length ?? 0
-    const starRatio = totalSku > 0 ? starCount / totalSku : 0
-    const structureBonus = inv?.structureHealth.isHealthy ? 20 : 0
-    const assortmentScore = Math.round(Math.min(100, 50 + starRatio * 200 + structureBonus))
-    const creatorRatio = wd.totalGMV > 0 ? wd.creatorContentGMV / wd.totalGMV : 0
-    const videoBonus = Math.min(20, (wd.videoCount / 10) * 20)
-    const contentScore = Math.round(Math.min(100, 40 + creatorRatio * 80 + videoBonus))
-    const roiScore = Math.round(Math.min(100, Math.max(0, (wd.adROI / 2.0) * 80 + 10)))
-    const cvrScore = Math.round(Math.min(100, Math.max(0, (wd.conversionRate / 2.0) * 80 + 10)))
-    const dims = [
-      { label: '货盘结构', score: assortmentScore },
-      { label: '内容生产', score: contentScore },
-      { label: '投流效率', score: roiScore },
-      { label: '成交转化', score: cvrScore },
-    ]
-    return dims.reduce((a, b) => (a.score < b.score ? a : b))
-  })()
+  /** 统一口径的四维评分（lib/dimensionScores），仅用于推算「最弱维度」 */
+  const weakest = merchant
+    ? weakestDimension(computeDimensionScores(merchant, inv))
+    : null
 
   function dimColor(s: number) {
     return s >= 80 ? 'text-emerald-600' : s >= 60 ? 'text-amber-500' : 'text-rose-500'
   }
+
+  const validation = report.validation
+  const conf = validation?.overallConfidence ?? 0
+  const hasValidation = !!validation && conf > 0
+  const confMeta =
+    conf >= 80
+      ? { label: '高', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' }
+      : conf >= 60
+      ? { label: '中', chip: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' }
+      : { label: '低', chip: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' }
 
   return (
     <div className="rounded-xl border border-gray-200 p-5">
@@ -172,6 +169,39 @@ function DiagnoseHeader({
         <div className="text-right">
           <p className={`text-3xl font-bold ${scoreColor}`}>{score}</p>
           <p className="text-xs text-gray-400">健康评分 / 100</p>
+          {hasValidation && (
+            <Tooltip
+              cursorHelp={false}
+              content={
+                <div className="space-y-1 max-w-[240px]">
+                  <div className="font-medium">AI 自我校验 · 置信度 {conf}/100</div>
+                  <div className="text-gray-300 leading-relaxed">
+                    本报告各项建议经一道独立质检：与商家真实数据是否矛盾、是否过激/过保守、是否有量化依据。
+                  </div>
+                  {validation!.issues?.length > 0 ? (
+                    <div className="pt-1">
+                      <div className="text-gray-400 mb-0.5">待注意（{validation!.issues.length}）：</div>
+                      <ul className="list-disc pl-4 space-y-0.5 text-gray-200">
+                        {validation!.issues.slice(0, 3).map((it, i) => (
+                          <li key={i}>{it}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="text-gray-400 pt-1">未发现明显矛盾</div>
+                  )}
+                </div>
+              }
+              maxWidth={280}
+            >
+              <span
+                className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full border text-[11px] font-medium ${confMeta.chip}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${confMeta.dot}`} />
+                置信度 {confMeta.label} · {conf}
+              </span>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -194,6 +224,83 @@ function DiagnoseHeader({
   )
 }
 
+// —— P0-③ 「本周就做这一件」：把全部告警收敛成唯一一条最高 ROI 行动 ——
+
+const TOP_MODULE_META: Record<string, { icon: string; label: string }> = {
+  diagnose: { icon: '💰', label: '营收' },
+  assortment: { icon: '📦', label: '货盘' },
+  content: { icon: '🎯', label: '内容' },
+  empowerment: { icon: '⚙️', label: '投流' },
+  benchmark: { icon: '🏆', label: '标杆' },
+}
+
+const URGENCY_BY_LEVEL: Record<string, number> = { critical: 3, warning: 2, info: 1 }
+
+/**
+ * 行动优先级分 = 影响面 × 紧急度 × 置信度（相乘，任一为 0 则靠后）。
+ *  - 影响面：命中最弱维度 ×1.5，否则 ×1.0
+ *  - 紧急度：P1=3 / P2=2 / P3=1
+ *  - 置信度：报告整体置信度归一化（无校验时给 0.7 中性值，避免清零）
+ */
+function pickTopAction(report: FullReport): { alert: import('@/types').Alert; score: number } | null {
+  const alerts = report.popupAlerts ?? []
+  if (alerts.length === 0) return null
+  const weakest = report.diagnose?.weakestDimension
+  const confNorm = report.validation?.overallConfidence
+    ? Math.max(0.4, report.validation.overallConfidence / 100)
+    : 0.7
+
+  const scored = alerts.map((a) => {
+    const impact = a.module === weakest ? 1.5 : 1.0
+    const urgency = URGENCY_BY_LEVEL[a.level] ?? 1
+    return { alert: a, score: impact * urgency * confNorm }
+  })
+  scored.sort((x, y) => y.score - x.score)
+  return scored[0]
+}
+
+function TopActionCard({ report }: { report: FullReport }) {
+  const top = pickTopAction(report)
+  if (!top) return null
+  const { alert } = top
+  const m = TOP_MODULE_META[alert.module] ?? { icon: '·', label: '' }
+  const levelLabel =
+    alert.level === 'critical' ? '紧急' : alert.level === 'warning' ? '重要' : '储备'
+
+  return (
+    <div className="rounded-xl border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] uppercase tracking-widest text-rose-500 font-semibold">
+          本周重点关注
+        </span>
+        <span className="text-[10px] text-gray-400">
+          按「影响面 × 紧急度 × 置信度」自动收敛
+        </span>
+      </div>
+      <div className="flex items-start gap-2">
+        <span className="text-base mt-0.5" title={`${m.label}相关`}>
+          {m.icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-900">{alert.title}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 shrink-0">
+              {levelLabel} · {m.label}
+            </span>
+          </div>
+          <p className="text-xs text-gray-600 leading-relaxed mt-1">{alert.body}</p>
+          <SuggestionFeedback
+            merchantId={report.merchantId}
+            week={report.week}
+            module={alert.module}
+            suggestionText={`本周第一优先 · ${alert.title}`}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ReportCard({ report }: Props) {
   const score = report.diagnose?.healthScore ?? 0
   const scoreColor =
@@ -212,10 +319,25 @@ export default function ReportCard({ report }: Props) {
   const matchDimensions = report.benchmark?.matchDimensions ?? []
   const matchSummary = report.benchmark?.matchSummary
 
+  // P1-⑥：本次报告的真实事实语料，供各处 EvidenceChips 自检"来源"是否有据
+  const merchant = mockMerchants.find((m) => m.id === report.merchantId)
+  const corpus = buildFactCorpus(merchant, report)
+
   return (
+    <EvidenceCorpusContext.Provider value={corpus}>
     <div className="space-y-3">
       {/* 顶部：商家 + 健康分 + 四维拆解 + 本周优先级（不折叠） */}
       <DiagnoseHeader report={report} score={score} scoreColor={scoreColor} />
+
+      {/* 上周执行回顾：把飞轮演出来（无历史时自动隐藏） */}
+      <WeeklyReviewCard
+        merchantId={report.merchantId}
+        currentWeek={report.week}
+        currentScore={score}
+      />
+
+      {/* 本周重点关注：全部告警收敛成唯一一条最高 ROI 行动 */}
+      <TopActionCard report={report} />
 
       {/* A · 选品（默认展开） */}
       <Collapsible
@@ -387,6 +509,7 @@ export default function ReportCard({ report }: Props) {
         <SectionFooter evidence={report.benchmark?.evidence} />
       </Collapsible>
     </div>
+    </EvidenceCorpusContext.Provider>
   )
 }
 
@@ -423,8 +546,51 @@ function EmpowermentSectionBody({ report }: { report: FullReport }) {
       })
     : null
 
+  // 错误成本分级授权：投放=高成本，强制走"AM 二次确认 + 确定性规则校验"
+  const policy = authorityOf('empowerment')
+  // 演示用硬规则校验：ROI < 1.5 时禁止激进放量工具（GMV Max），与规则引擎口径一致
+  const ruleHits = wd
+    ? [
+        wd.adROI < 1.5
+          ? { ok: false, text: `ROI ${wd.adROI.toFixed(2)} < 1.5：禁止 GMV Max 放量，仅允许 Promote / Spark Ads 测试` }
+          : { ok: true, text: `ROI ${wd.adROI.toFixed(2)} ≥ 1.5：允许 GMV Max 放量` },
+      ]
+    : []
+
   return (
     <div className="mt-2 space-y-3">
+      {/* 0. 分级授权 banner —— 投放属高错误成本域，必须强确认 + 硬规则校验 */}
+      <div className="rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2.5">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${policy.tone.chip}`}>
+            {costLabel(policy.cost)}
+          </span>
+          <span className="text-[11px] font-medium text-rose-800">
+            投放建议直接影响商家预算 · {policy.gate}
+          </span>
+        </div>
+        <p className="text-[10px] text-rose-700/90 leading-relaxed mb-1.5">
+          {policy.consequence}——因此本域不走"轻确认"，建议执行前必须经 AM 二次确认，并通过确定性规则校验。
+        </p>
+        {ruleHits.length > 0 && (
+          <div className="space-y-0.5">
+            {ruleHits.map((r, i) => (
+              <div key={i} className="flex items-start gap-1 text-[10px]">
+                <span className={r.ok ? 'text-emerald-600' : 'text-rose-600'}>
+                  {r.ok ? '✓' : '✕'}
+                </span>
+                <span className={r.ok ? 'text-emerald-700' : 'text-rose-700 font-medium'}>
+                  硬规则校验 · {r.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-rose-600 text-white">
+          🔒 {policy.ctaLabel}
+        </div>
+      </div>
+
       {/* 1. 顶部 banner —— 结构化：标题 + inline KPIs + numbered bullets */}
       {emp?.adStrategy && (
         <div className="rounded-lg bg-gradient-to-r from-amber-50 via-amber-50/80 to-orange-50 border border-amber-200/70 px-3 py-2.5">
@@ -964,10 +1130,12 @@ function CampaignBlock({
   const currentIdx = milestones.findIndex((m) => node.daysUntil >= m.d) // 第一个 >= 当前剩余天数的里程碑就是"刚过"
   // 已经过去的里程碑数量（用于轴线进度）
   const passedCount = milestones.filter((m) => node.daysUntil < m.d).length
-  const linePct =
+  const linePctRaw =
     milestones.length > 1
       ? ((passedCount + (currentIdx >= 0 ? 0.5 : 0)) / (milestones.length - 1)) * 100
       : 0
+  // 夹到 0–100，避免末节点（已过全部里程碑）时进度线冲出轨道
+  const linePct = Math.max(0, Math.min(100, linePctRaw))
 
   // 节点目标：基于 wd 推算
   // 大促日 GMV 目标：按节点紧迫度给倍数（远 1.3x，近 1.6x，冲刺期 2.0x）
@@ -1003,11 +1171,11 @@ function CampaignBlock({
 
       {/* 时间轴：里程碑 + 当前位置 */}
       <div className="relative px-1 mb-2.5">
-        {/* 底层连续线 */}
-        <div className="absolute left-2 right-2 top-[7px] h-0.5 bg-white/70 rounded-full" />
+        {/* 底层连续线：左右内缩到首/末节点圆点中心（节点 w-9，半宽 18px），避免线尾溢出 */}
+        <div className="absolute left-[18px] right-[18px] top-[7px] h-0.5 bg-white/70 rounded-full" />
         <div
-          className={`absolute left-2 top-[7px] h-0.5 ${urgencyMeta.bar} rounded-full transition-all`}
-          style={{ width: `calc((100% - 16px) * ${linePct} / 100)` }}
+          className={`absolute left-[18px] top-[7px] h-0.5 ${urgencyMeta.bar} rounded-full transition-all`}
+          style={{ width: `calc((100% - 36px) * ${linePct} / 100)` }}
         />
         <div className="relative flex justify-between">
           {milestones.map((m) => {
@@ -1152,8 +1320,24 @@ function ContentSectionBody({ report }: { report: FullReport }) {
 
   const lifecycle = diag?.lifecycle && LIFECYCLE_LABELS[diag.lifecycle]
 
+  // 错误成本分级授权：内容=低成本，可快速试错，授权门最轻
+  const policy = authorityOf('content')
+
   return (
     <div className="mt-2">
+      {/* 0. 分级授权 banner —— 内容属低错误成本域，可放开 / 轻确认（与投放的强确认形成对照） */}
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 mb-3 flex items-center gap-2">
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${policy.tone.chip}`}>
+          {costLabel(policy.cost)}
+        </span>
+        <span className="text-[10px] text-emerald-800 leading-relaxed flex-1 min-w-0">
+          内容可快速试错——授权门最轻，{policy.gate}，AM 可大胆尝试、快速迭代。
+        </span>
+        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white shrink-0">
+          {policy.ctaLabel}
+        </span>
+      </div>
+
       {/* 一、商品诊断（不折叠） */}
       {(diag || merchant?.heroImage) && (
         <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg p-3 mb-4 flex gap-3">

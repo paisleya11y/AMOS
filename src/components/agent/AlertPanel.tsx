@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { Alert, AgentModule } from '@/types'
+import SuggestionFeedback from './SuggestionFeedback'
 
 const COLLAPSE_KEY = 'amos:alertPanel:collapsed'
 
@@ -57,9 +58,12 @@ interface Props {
   onResolve?: (alert: Alert) => void
   /** 是否禁用 cta（如：正在跑 agent 中） */
   ctaDisabled?: boolean
+  /** 反馈记录用：当前商家 + 周期（缺省则不展示反馈条） */
+  merchantId?: string
+  week?: string
 }
 
-export default function AlertPanel({ alerts, onResolve, ctaDisabled }: Props) {
+export default function AlertPanel({ alerts, onResolve, ctaDisabled, merchantId, week }: Props) {
   const [open, setOpen] = useState(true)
   useEffect(() => {
     try {
@@ -175,6 +179,14 @@ export default function AlertPanel({ alerts, onResolve, ctaDisabled }: Props) {
                   >
                     {ctaDisabled ? '正在处理…' : '立即处理 →'}
                   </button>
+                )}
+                {merchantId && week && (
+                  <SuggestionFeedback
+                    merchantId={merchantId}
+                    week={week}
+                    module={alert.module}
+                    suggestionText={`预警 · ${alert.title}`}
+                  />
                 )}
               </div>
             )
